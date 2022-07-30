@@ -18,7 +18,7 @@ namespace PowerFXBenchmark
 {
     public class Benchmark
     {
-        private readonly EngineWrapper engine;
+        public readonly EngineWrapper engine;
 
         private readonly RecordType untypedRecordtype;
         private readonly RecordType stronglyTypedRecordtype;
@@ -35,6 +35,7 @@ namespace PowerFXBenchmark
         private readonly string telemetryJson;
         private readonly JsonElement telemetryJsonElement;
 
+        private readonly ParsedContext parsedContext_stronglyTyped;
 
         public Benchmark()
         {
@@ -69,6 +70,9 @@ namespace PowerFXBenchmark
             Expression_Complexity2 = engine.CompiledSingleExpression(
                 "(Value(event.data.temperature) - 32) * 5 / 9 > 10 && Text(testObj.'$metadata'.type) = \"powerfx-test-1\"",
                 untypedRecordtype);
+
+            // just parsing, no binding
+            parsedContext_stronglyTyped = ParseExpression_StronglyTypedInput();
         }
 
         [Benchmark]
@@ -86,6 +90,13 @@ namespace PowerFXBenchmark
             return engine.CompiledSingleExpression(
                 "(Value(testObj.Temperature) - 32) * 5 / 9 > 10  && !Boolean(event.data.isActive) && Text(event.data.testId) <> \"mytest\"",
                 untypedRecordtype);
+        }
+
+        [Benchmark]
+        public ParsedContext ParseExpression_StronglyTypedInput()
+        {
+            return engine.ParseExpressionAndExtractPaths(
+                "(testObj.Temperature - 32) * 5 / 9 > 10 && !event.data.isActive && event.data.testId <> \"mytest\"");
         }
 
         /// <summary>
@@ -115,12 +126,30 @@ namespace PowerFXBenchmark
         /// Evaluate "pre-compiled" expression, with C# TestObject and json string as input.
         /// </summary>
         [Benchmark]
-        public async Task<object> Evaluation_UntypedInput_CustomUntypedObject()
+        public async Task<object> Evaluation_UntypedInput_CustomUntypedObject_JsonString()
         {
             var builder = new RecordValueBuilder();
             var parameters = builder
-                .WithTestObject(testObj)
-                .WithEventJson(telemetryJson)
+                .WithUntypedTestObject(testObj)
+                .WithUntypedEventJson(telemetryJson)
+                .Build();
+            var result = await Expression_Untyped
+                .EvalAsync(parameters, default)
+                .ConfigureAwait(false);
+
+            return result.ToObject();
+        }
+
+        /// <summary>
+        /// Evaluate "pre-compiled" expression, with C# TestObject and json element as input.
+        /// </summary>
+        [Benchmark]
+        public async Task<object> Evaluation_UntypedInput_CustomUntypedObject_JsonElement()
+        {
+            var builder = new RecordValueBuilder();
+            var parameters = builder
+                .WithUntypedTestObject(testObj)
+                .WithUntypedEventJson(telemetryJsonElement)
                 .Build();
             var result = await Expression_Untyped
                 .EvalAsync(parameters, default)
@@ -133,7 +162,7 @@ namespace PowerFXBenchmark
         /// Evaluate "pre-compiled" expression, including parsing JSON string into strongly typed record.
         /// </summary>
         [Benchmark]
-        public async Task<object> Evaluation_StronglyTypedInput()
+        public async Task<object> Evaluation_StronglyTypedInput_FromJson()
         {
             var parameters = RecordValue
                 .NewRecordFromFields(
@@ -146,13 +175,31 @@ namespace PowerFXBenchmark
             return result.ToObject();
         }
 
+        /// <summary>
+        /// Bind and evaluate a parsed expression, including contructing a new JSON element that only contains referenced paths from the expression. 
+        /// </summary>
         [Benchmark]
+        public async Task<object> Evaluation_StronglyTypedInput_ChristianApproach()
+        {
+            return await engine.EvaluateExpressionAsync(parsedContext_stronglyTyped, testObj, telemetryJsonElement).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Parse Json String To JsonElement
+        /// </summary>
+        [Benchmark]
+        public void Parse_JsonString_To_JsonElement()
+        {
+            JsonDocument.Parse(telemetryJson);
+        }
+
+        //[Benchmark]
         public async Task<object> Evaluation_Expression_Complexity1()
         {
             var builder = new RecordValueBuilder();
             var parameters = builder
-                .WithTestObject(testObj)
-                .WithEventJson(telemetryJson)
+                .WithUntypedTestObject(testObj)
+                .WithUntypedEventJson(telemetryJson)
                 .Build();
             var result = await Expression_Complexity1
                 .EvalAsync(parameters, default)
@@ -161,19 +208,24 @@ namespace PowerFXBenchmark
             return result.ToObject();
         }
 
-        [Benchmark]
+        //[Benchmark]
         public async Task<object> Evaluation_Expression_Complexity2()
         {
             var builder = new RecordValueBuilder();
             var parameters = builder
-                .WithTestObject(testObj)
-                .WithEventJson(telemetryJson)
+                .WithUntypedTestObject(testObj)
+                .WithUntypedEventJson(telemetryJson)
                 .Build();
             var result = await Expression_Complexity2
                 .EvalAsync(parameters, default)
                 .ConfigureAwait(false);
 
             return result.ToObject();
+        }
+
+        public async Task<object> EvalParsedContext(ParsedContext context)
+        {
+            return await engine.EvaluateExpressionAsync(context, testObj, telemetryJsonElement).ConfigureAwait(false);
         }
     }
 }

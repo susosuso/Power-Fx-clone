@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace PowerFXBenchmark
 {
-    public class EngineWrapper
+    public partial class EngineWrapper
     {
         public readonly RecalcEngine engine;
 
@@ -29,12 +29,12 @@ namespace PowerFXBenchmark
             return checkedResult.Expression;
         }
 
-        public Task<object> EvaluateExpressionAsync(IExpression expression, TestObject twin, string telemetry, CancellationToken cancellationToken = default)
+        public Task<object> EvaluateExpressionAsync(IExpression expression, TestObject testObj, string telemetry, CancellationToken cancellationToken = default)
         {
             var builder = new RecordValueBuilder();
             var parameters = builder
-                .WithTestObject(twin)
-                .WithEventJson(telemetry)
+                .WithUntypedTestObject(testObj)
+                .WithUntypedEventJson(telemetry)
                 .Build();
 
             return EvaluateExpressionAsync(expression, parameters, cancellationToken);
